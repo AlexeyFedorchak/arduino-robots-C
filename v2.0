@@ -1,0 +1,544 @@
+//-------------------------------------
+//
+// *** LIBS ******
+//
+//-------------------------------------
+
+#include <Servo.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <MPU6050.h>
+
+
+//-------------------------------------
+//
+// *** INITAL CONFIGS ******
+//
+//-------------------------------------
+
+int allowMove = 1;
+int soundSet = 0;
+double distance;
+
+double distances[19]; 
+
+int seeIndex;
+
+Servo eyes;
+LiquidCrystal_I2C lcd = LiquidCrystal_I2C(0x27, 16, 2);
+
+MPU6050 mpu;
+
+int16_t ax, ay, az, gx, gy, gz;
+int valax;
+int valay;
+int valaz;
+
+#define  c     3830    // 261 Hz
+#define  d     3400    // 294 Hz
+#define  e     3038    // 329 Hz
+#define  f     2864    // 349 Hz
+#define  g     2550    // 392 Hz
+#define  a     2272    // 440 Hz
+#define  b     2028    // 493 Hz
+#define  C     1912    // 523 Hz
+                       
+
+// -----------------------------
+//
+// *** calc distance to the closest object
+//
+// -----------------------------
+
+double calcDistance() {
+  double duration, distance;
+  digitalWrite(13, LOW);
+  delayMicroseconds(2);
+  digitalWrite(13, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(13, LOW);
+  duration = pulseIn(12, HIGH);
+  return (duration/2) / 29.1;
+}
+
+// -----------------------------
+//
+// *** init move settings **
+//
+// -----------------------------
+
+void initMoveSettins() {
+  pinMode(3,OUTPUT);
+  pinMode(5, OUTPUT);
+  pinMode(11,OUTPUT);
+  pinMode(6, OUTPUT);
+}
+
+
+// -----------------------------
+//
+// *** init distance settings **
+//
+// -----------------------------
+void initDistanceSettings() {
+  pinMode(13, OUTPUT);
+  pinMode(12, INPUT);
+  Serial.begin(9600);
+}
+
+
+// -----------------------------
+//
+// *** init sound settings **
+//
+// -----------------------------
+void initSoundSettings() {
+  pinMode(8, OUTPUT);
+  pinMode(10, OUTPUT);
+}
+
+// -----------------------------
+//
+// *** init Bob eyes settings **
+//
+// -----------------------------
+void initEyesSettings() {
+    eyes.attach(9);
+}
+
+// -----------------------------
+//
+// *** Express you emptions, Bob!.. **
+//
+// -----------------------------
+void initLCD() {
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("Hello!");
+  delay(500);
+  lcd.setCursor(0, 1);
+  lcd.print("I'm Bob!");
+}
+
+// -----------------------------
+//
+// *** Are you dizzy, Jemini?!.. **
+//
+// -----------------------------
+void initXYZ() {
+    mpu.initialize();
+}
+
+//----------------------
+//
+//  *** Go right! ***
+//  *** 45 - 1200 | 90 - 1400 | 10 - 200 | 30 - 500 ***
+//
+//----------------------
+void right(int delayTime, int to, int back) {
+  roundSound();
+  
+  if (allowMove == 1) {
+    analogWrite(3, to);
+    analogWrite(6, back);
+
+    delay(delayTime);
+    stop();
+    soundSet = 1;
+  }
+}
+
+//----------------------
+//
+//  *** Left side, Bob!? ***
+//  *** 45 - 1400 | 10 - 500 | 90 - 2000 | 30 - 1100
+//
+//----------------------
+void left(int delayTime, int to, int back) {
+  roundSound();
+  
+  if (allowMove == 1) {
+    analogWrite(11, to);
+    analogWrite(5, back);
+  
+    delay(delayTime);
+    stop();    
+  }
+}
+
+//----------------------
+//
+//  *** See you speed, Jemini! ***
+//
+//----------------------
+double getSpeed() {
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  ax = map(ax, -17000, 17000, -125, 125);
+  ax = 115 + ax;
+  if (ax < -4 || ax > 4)
+    return ax;
+
+  return 0;
+}
+
+//----------------------
+//
+//  *** Move left, see right, Jemini! ***
+//
+//----------------------
+double getRotationZ() {
+  mpu.getRotation(&ax, &ay, &az);
+  ax = map(ax, -17000, 17000, 0, 255);
+  return abs(ax - 124);
+}
+
+//----------------------
+//
+//  *** Break this reality Jermini! ***
+//
+//----------------------
+double getRotationX() {
+  mpu.getRotation(&ax, &ay, &az);
+  ay = map(ay, -17000, 17000, 0, 255);
+  return abs(ay - 125);
+}
+
+//----------------------
+//
+//  *** Break this reality Jermini! ***
+//
+//----------------------
+double getRotationY() {
+  mpu.getRotation(&ax, &ay, &az);
+  az = map(az, -17000, 17000, 0, 255);
+  return abs(az - 129);
+}
+
+//----------------------
+//
+//  *** See around, Jenny!.. ***
+//
+//----------------------
+void aproximateTurn (int gradus) {
+  if (gradus == 10) {
+    left(2000, 255, 0); 
+  }
+
+  if (gradus == 30) {
+    left(1300, 255, 0);
+  }
+
+  if (gradus == 45) {
+    left(1400, 255, 0);
+  }
+
+  if (gradus == 100) {
+    right(200, 255, 0);
+  }
+
+  if (gradus == 120) {
+    right(500, 255, 0);
+  }
+
+  if (gradus == 135) {
+    right(1100, 255, 0);
+  }
+
+  if (gradus == 180) {
+    right(1400, 255, 0);
+  }
+}
+
+//----------------------
+//
+//  *** We are ready to go!.. ***
+//
+//----------------------
+void seeAroundAndTurn() {
+    stop();
+    
+    if (seeIndex > 18) {
+      for(seeIndex = 18; seeIndex >= 0; seeIndex--) {
+        see(200, seeIndex * 10);
+        distance = calcDistance();
+        distances[seeIndex] = distance;
+      }
+    } else {
+      for(seeIndex = 0; seeIndex <= 18; seeIndex++) {
+        see(200, seeIndex * 10);
+        distance = calcDistance();
+        distances[seeIndex] = distance;
+      }
+    }
+
+    double maxDistance = 0;
+    int maxSeeIndex = 0;
+
+    for (int j = 0; j <= 18; j++) {
+      if (distances[j] > maxDistance && distances[j] < 2000) {
+        maxDistance = distances[j];
+        maxSeeIndex = j;
+      }
+    }
+
+    up();
+    
+    if (maxSeeIndex <= 3) {
+      aproximateTurn(30);
+    }
+
+    if (maxSeeIndex == 4 || maxSeeIndex == 5) {
+      aproximateTurn(45);
+    }
+
+    if (maxSeeIndex > 5 && maxSeeIndex < 10) {
+      to (1000, 255, 255);
+    }
+
+    if (maxSeeIndex >=10 && maxSeeIndex < 13) {
+      aproximateTurn(120);
+    }
+
+    if (maxSeeIndex == 13 || maxSeeIndex == 14) {
+      aproximateTurn(135);
+    }
+
+    if (maxSeeIndex > 14) {
+      aproximateTurn(180);
+    }
+
+    up();
+
+    Serial.println(maxSeeIndex);
+}
+
+//----------------------
+//
+//  *** Go straight Jimmy and never look back!? ***
+//
+//----------------------
+void to(int delayTime, int one, int two) {
+  if (allowMove == 1) {
+    analogWrite(3, one);
+    analogWrite(11, two);
+  
+    delay(delayTime);
+    stop();   
+  }
+}
+
+//----------------------
+//
+//  *** Get back!.. ***
+//
+//----------------------
+void back(int delayTime, int one, int two) {
+  if (allowMove == 1) {
+    analogWrite(6, one);
+    analogWrite(5, two);
+  
+    delay(delayTime);
+    stop();
+  }
+}
+
+//----------------------
+//
+//  *** See right.. see left..!.. ***
+//
+//----------------------
+void see(int delayTime, int direction) {
+  eyes.write(direction);
+  delay(delayTime);
+}
+
+//----------------------
+//
+//  *** Stop, Bob! ***
+//
+//----------------------
+void stop() {
+  analogWrite(5, 0);
+  analogWrite(6, 0);
+  analogWrite(3, 0);
+  analogWrite(11, 0);
+
+  allowMove = 0;
+}
+
+//----------------------
+//
+//  *** Up engines, Bob! We are going to the stars!.. ***
+//
+//----------------------
+void up() {
+  allowMove = 1;
+}
+
+// -----------------------------
+//
+// *** say Gav Bob! **
+//
+// -----------------------------
+void sound(int frequency, int delayTime, int isFrequent) {
+  if (isFrequent == 1) {
+    digitalWrite(10, 1);  
+    tone(8, frequency);
+    delay(delayTime);
+    digitalWrite(10, 0);
+    delay(delayTime);
+  } else if (isFrequent == 0) {
+    if (soundSet == 0) {
+      digitalWrite(10, 1);  
+      tone(8, frequency);
+      delay(delayTime);
+      digitalWrite(10, 0);
+      delay(delayTime);
+      soundSet = 1;
+    }
+  } else {
+    if (soundSet == 0) {
+      digitalWrite(10, 1);  
+      tone(8, frequency);
+      delay(delayTime);
+    }
+  }
+}
+
+// -----------------------------
+//
+// *** The silence is golden! **
+//
+// -----------------------------
+void silence(int delayTime) {
+  digitalWrite(10, 0);
+  delay(delayTime);
+}
+
+// -----------------------------
+//
+// *** Raining always makes me sad! **
+//
+// -----------------------------
+void sad() {
+    sound(2600, 200, 2);
+    sound(2300, 200, 2);
+    sound(2100, 100, 0);
+    silence(100);
+}
+
+// -----------------------------
+//
+// *** Enjoy this world, Jemini! **
+//
+// -----------------------------
+void happy() {
+    sound(2100, 200, 2);
+    sound(2300, 200, 2);
+    sound(2800, 100, 0);
+    silence(100);
+}
+
+// -----------------------------
+//
+// *** This makes me crazy! **
+//
+// -----------------------------
+void wonder() {
+    sound(2100, 100, 2);
+    silence(50);
+    sound(2800, 100, 2);
+    silence(50);
+    sound(2100, 100, 2);
+    silence(50);
+    sound(2800, 100, 0);
+    silence(100);
+}
+
+// -----------------------------
+//
+// *** Say goof when round! **
+//
+// -----------------------------
+void roundSound() {
+    sound(800, 100, 2);
+    silence(100);
+    sound(2000, 100, 2);
+    silence(100);
+    sound(800, 100, 2);
+    silence(100);
+    sound(2000, 100, 2);
+    silence(100);
+}
+
+// -----------------------------
+//
+// *** init move settings **
+//
+// -----------------------------
+void setup() {
+  initEyesSettings();
+  initMoveSettins();
+  initDistanceSettings();
+  initSoundSettings();
+  initLCD();
+  initXYZ();
+  delay(1000);
+}
+
+// -----------------------------
+//
+// *** Do your cray loop, Bob! **
+//
+// -----------------------------
+void loop() {
+  lcd.setCursor(0, 0);
+  lcd.print("Analyzing..");
+  lcd.setCursor(0, 1);
+  lcd.print("         ");
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  valax = map(ax, -17000, 17000, 0, 255);
+  valay = map(ay, -17000, 17000, 0, 255);
+  valaz = map(az, -17000, 17000, 0, 255);
+
+  mpu.getRotation(&ax, &ay, &az);
+  valax = map(ax, -17000, 17000, 0, 255);
+  valay = map(ay, -17000, 17000, 0, 255);
+  valaz = map(az, -17000, 17000, 0, 255);
+
+  ax = map(ax, -17000, 17000, -125, 125);
+  
+//  Serial.print("||X: ");
+//  Serial.print(getRotationY());
+
+//  Serial.print("||Y: ");
+//  Serial.print(gy);
+//
+//  Serial.print("||Z: ");
+//  Serial.print(gz);
+
+//  Serial.println();
+
+  
+
+  lcd.setCursor(0, 1);
+  lcd.print("X: ");
+  lcd.setCursor(3, 1);
+  lcd.print(valax);
+
+  lcd.setCursor(0, 2);
+  lcd.print("Y: ");
+  lcd.setCursor(3, 2);
+  lcd.print(valay);
+  
+  mpu.getRotation(&ax, &ay, &az);
+  valaz = map(az, -17000, 17000, 0, 255);
+
+  lcd.setCursor(7, 2);
+  lcd.print("RotZ: ");
+  lcd.setCursor(13, 2);
+  lcd.print(valaz);
+//
+ // seeAroundAndTurn(); 
+}
